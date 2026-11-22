@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8">
+<style>
+ body{width:340px;margin:0;font:13px system-ui,sans-serif;background:#16181d;color:#eee}
+ header{padding:10px 12px;font-weight:700;display:flex;justify-content:space-between;border-bottom:1px solid #2a2d35}
+ #st{font-weight:400;font-size:12px;opacity:.8}
+ .row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #22252c}
+ .row span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ small{display:block;opacity:.6}
+ button{background:#e11d48;border:0;color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer}
+ #empty{padding:14px 12px;opacity:.6} label{display:block;padding:10px 12px}
+</style>
+<header>IK DOWNLOADER <span id="st">…</span></header>
+<div id="connect" style="display:none;padding:10px 12px;background:#2a1f12"><div style="margin-bottom:6px">Not approved yet. Click Connect, then answer <b>Yes</b> in the IK DOWNLOADER window.</div><button id="pairbtn" style="width:100%">Connect to IK DOWNLOADER</button></div>
+<div style="padding:10px 12px"><button id="page" style="width:100%">Choose quality &amp; download (this page)</button></div>
+<div id="list"></div><div id="empty">No videos detected on this page yet. Play a video, then reopen.</div>
+<label><input type="checkbox" id="cap"> Catch every download (zip, exe, ... ) and ask first</label>
+<script src="popup.js"></script>

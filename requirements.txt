@@ -1,0 +1,4 @@
+# Runtime dependencies (only needed for video sites and bundled ffmpeg; plain file downloads need nothing).
+# yt-dlp is deliberately NOT pinned: video sites change constantly, and the weekly release build picks up the newest one.
+yt-dlp[default]
+imageio-ffmpeg>=0.5,<1

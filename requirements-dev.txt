@@ -1,0 +1,3 @@
+-r requirements-build.txt
+pillow            # tools/make_assets.py
+pyflakes          # lint (also run by CI)

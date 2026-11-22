@@ -1,0 +1,126 @@
+name: Build IK DOWNLOADER
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"   # every Monday: rebuild with the newest yt-dlp
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install lint tool
+        run: python -m pip install pyflakes
+      - name: Lint (undefined names, unused imports)
+        run: python -m pyflakes ikd tests tools ik_downloader.py
+      - name: Version numbers agree everywhere
+        run: python tools/sync_version.py --check
+      - name: Unit, API, extension and UI-logic tests
+        run: python -m unittest discover -s tests -t . -v
+
+  build:
+    name: Build Windows program and installer
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      CERT_B64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}        # optional code-signing certificate (see SECURITY.md)
+      CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Point "Check for updates" at this repository
+        shell: pwsh
+        run: |
+          $p = "ikd/common.py"
+          $t = [IO.File]::ReadAllText($p).Replace("YOUR-GITHUB-USER/IK-DOWNLOADER", "${{ github.repository }}")
+          [IO.File]::WriteAllText($p, $t, (New-Object Text.UTF8Encoding $false))
+      - name: Install dependencies
+        run: python -m pip install --upgrade -r requirements-build.txt
+      - name: Get Deno (pinned version, SHA-256 verified)
+        shell: pwsh
+        run: ./tools/get_deno.ps1 -Out .
+      - name: Build exe
+        run: python -m PyInstaller --noconfirm --onefile --noconsole --name IK-DOWNLOADER --icon assets\icon.ico --add-data "assets;assets" --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all imageio_ffmpeg --collect-all certifi --add-binary "deno.exe;." ik_downloader.py
+      - name: Self-test the built exe (assets, yt-dlp, ffmpeg, deno, Tk)
+        shell: pwsh
+        run: |
+          Start-Process -FilePath dist\IK-DOWNLOADER.exe -ArgumentList "--selftest","$PWD\selftest.json" -Wait
+          $r = Get-Content selftest.json -Raw | ConvertFrom-Json
+          $r | ConvertTo-Json
+          if (-not ($r.assets -and $r.tk -and $r.ffmpeg -and $r.deno -and $r.yt_dlp)) { throw "Built exe is missing components" }
+      - name: Sign exe (only if a certificate secret exists)
+        if: env.CERT_B64 != ''
+        shell: pwsh
+        run: ./tools/sign.ps1 dist\IK-DOWNLOADER.exe
+      - name: Build Windows installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $v = python tools/sync_version.py --print
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer\ik_downloader.iss
+      - name: Sign installer (only if a certificate secret exists)
+        if: env.CERT_B64 != ''
+        shell: pwsh
+        run: ./tools/sign.ps1 dist\IK-DOWNLOADER-Setup.exe
+      - name: Zip browser extension
+        shell: pwsh
+        run: Compress-Archive -Path extension\* -DestinationPath dist\IK-DOWNLOADER-browser-extension.zip
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem dist -File | Sort-Object Name | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
+          Set-Content -Path dist\SHA256SUMS.txt -Value $lines
+          $lines
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IK-DOWNLOADER-windows
+          path: dist/*
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/IK-DOWNLOADER.exe
+            dist/IK-DOWNLOADER-Setup.exe
+            dist/IK-DOWNLOADER-browser-extension.zip
+            dist/SHA256SUMS.txt
+      - name: Publish rolling "latest" build (pre-release, so update checks only see tagged versions)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (auto-updated weekly)
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/IK-DOWNLOADER.exe
+            dist/IK-DOWNLOADER-Setup.exe
+            dist/IK-DOWNLOADER-browser-extension.zip
+            dist/SHA256SUMS.txt
